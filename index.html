@@ -59,8 +59,16 @@ button.primary{background:var(--accent);color:var(--panel)}
 .label{font-size:.8rem;color:var(--muted)}
 textarea{width:100%;min-height:92px;font-family:var(--font-num);font-size:.85rem;border:1px solid var(--line);border-radius:6px;
   padding:8px;background:var(--bg);color:var(--ink);resize:vertical}
-details.paste{margin-top:12px}
-details.paste summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--accent)}
+.paste{margin-top:16px;display:flex;flex-direction:column;gap:8px}
+.paste-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.paste-head h3{margin:0;font-size:.95rem;font-weight:700}
+.paste .label{margin:0}
+.paste .tools{margin-top:0}
+.terms{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+.terms>div{border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.terms dt{font-weight:900;font-size:1rem;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.terms dt small{font-weight:500;color:var(--muted);font-size:.75rem}
+.terms dd{margin:4px 0 0;font-size:.85rem;line-height:1.7}
 .msg{font-size:.85rem;min-height:1.4em;color:var(--muted)}
 .msg.err{color:var(--hot)}
 .badge{font-size:.75rem;font-weight:700;border-radius:999px;padding:2px 10px;background:var(--accent-soft);color:var(--accent)}
@@ -114,12 +122,12 @@ td.k1{background:var(--r1)}td.k2{background:var(--r2)}td.k3{background:var(--r3)
     <div class="tools">
       <button id="clearBtn">すべて消去</button>
     </div>
-    <details class="paste">
-      <summary>展示情報の表をまとめて貼り付け</summary>
-      <p class="label">展示情報サイトの表（進入〜直線）をコピーして貼り付けてください。数字を順番に読み取ります：展示×6、周回×6、周り足×6、直線×6（先頭の進入 1〜6 は自動で除きます）。</p>
+    <div class="paste">
+      <div class="paste-head"><h3>展示情報の表をまとめて貼り付け</h3><button id="pasteClearBtn">削除</button></div>
+      <p class="label">展示情報サイトの表（進入〜直線）をコピーして貼り付けてください。「展示」「周回」「周り足」「直線」の行ごとに読み取ります。直線が「-」のときは展示タイムで計算します。</p>
       <textarea id="pasteBox" placeholder="例：&#10;進入	1	2	3	4	5	6&#10;展示	6.85	6.79	6.74	6.78	6.85	6.81&#10;…"></textarea>
       <div class="tools"><button class="primary" id="pasteBtn">貼り付けた値を入力欄に反映</button><span class="msg" id="pasteMsg"></span></div>
-    </details>
+    </div>
     <p class="msg" id="inMsg"></p>
   </section>
 
@@ -141,6 +149,24 @@ td.k1{background:var(--r1)}td.k2{background:var(--r2)}td.k3{background:var(--r3)
         <p class="pnote">点線は平均の70。</p>
       </div>
     </div>
+  </section>
+
+  <section class="panel">
+    <h2>各項目の見方</h2>
+    <dl class="terms">
+      <div><dt>出足 <small>周り足タイムから計算</small></dt>
+        <dd>ターンを回って立ち上がる区間の速さです。値が大きいほど、ターン出口でスピードに乗るのが早く、レース序盤の位置取りで有利になりやすい足です。</dd></div>
+      <div><dt>中間速1 <small>周り足＋直線</small></dt>
+        <dd>ターンから直線に入るまでをまとめた平均速度です。出足から加速へのつながりの良さを表します。</dd></div>
+      <div><dt>中間速2 <small>直線タイムから計算</small></dt>
+        <dd>ターン後の直線区間の速さです。加速の力強さ（行き足）を表します。直線タイムがない場合は展示タイムで計算します。</dd></div>
+      <div><dt>中間速3 <small>直線＋展示</small></dt>
+        <dd>直線区間から展示区間までをまとめた平均速度です。加速してからトップスピードに向かう途中の速さを表します。</dd></div>
+      <div><dt>伸び <small>展示タイムから計算</small></dt>
+        <dd>展示タイム（約150m）の区間の速さで、トップスピードに近い速度です。値が大きいほど直線で前の艇に迫りやすく、まくりや差しの伸びに効きます。</dd></div>
+      <div><dt>平均との差・エンジンパワー</dt>
+        <dd>小さい数字はそのレースの6艇平均との差です。エンジンパワーは各区間の差をまとめた点数で、70が平均です。高いほどモーターの調子が良いと見ます。</dd></div>
+    </dl>
   </section>
 
   <section class="panel notes">
@@ -283,6 +309,7 @@ function parsePaste(){
 buildInputs();
 $("clearBtn").addEventListener("click",()=>fill({}));
 $("pasteBtn").addEventListener("click",parsePaste);
+$("pasteClearBtn").addEventListener("click",()=>{$("pasteBox").value="";$("pasteMsg").textContent="";$("pasteBox").focus()});
 calc();
 </script>
 
