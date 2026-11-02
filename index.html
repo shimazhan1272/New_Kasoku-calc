@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}</style>
+<meta charset="utf-8">
+<title>新加速タイム計算機</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: 計測板のような2段構成 — 上に展示タイム入力（公式の展示情報と同じ並び）、下に新加速タイムの結果ボード */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#18212b; --muted:#5d6b78; --line:#d3dae1;
+  --accent:#0b5cad; --accent-soft:#dbe8f6;
+  --r1:#ff9e9e; --r2:#ffe066; --r3:#b9eaae; --hot:#d7263d;
+  --bar:#3b7fd0; --bar-top:#d7263d;
+  --font-display:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+  --font-num:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+  /* 艇番カラー（ボートレース公式） */
+  --b1:#ffffff; --b1t:#18212b; --b2:#1d1d1d; --b2t:#fff; --b3:#e0312d; --b3t:#fff;
+  --b4:#1f6fd1; --b4t:#fff; --b5:#f2d40c; --b5t:#18212b; --b6:#1c9a4b; --b6t:#fff;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10161d; --panel:#18212b; --ink:#e7edf3; --muted:#93a2b1; --line:#2c3a48;
+  --accent:#6fb0ff; --accent-soft:#1d3550;
+  --r1:#8a2a33; --r2:#7a6510; --r3:#2d5d33; --hot:#ff6b7d;
+  --bar:#4f93e6; --bar-top:#ff6b7d; --b1:#e9edf1; --b2:#000000; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10161d; --panel:#18212b; --ink:#e7edf3; --muted:#93a2b1; --line:#2c3a48;
+  --accent:#6fb0ff; --accent-soft:#1d3550;
+  --r1:#8a2a33; --r2:#7a6510; --r3:#2d5d33; --hot:#ff6b7d;
+  --bar:#4f93e6; --bar-top:#ff6b7d; --b1:#e9edf1; --b2:#000000; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-display);font-size:15px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 48px}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+header h1{font-size:1.75rem;font-weight:900;margin:0;letter-spacing:.02em;text-wrap:balance}
+header p{margin:4px 0 0;color:var(--muted);font-size:.9rem}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+.panel h2{font-size:1.05rem;margin:0 0 12px;font-weight:700;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.panel h2 small{font-weight:500;color:var(--muted);font-size:.8rem}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:center}
+thead th{background:var(--accent-soft);font-weight:700;font-size:.85rem}
+tbody th{background:var(--accent-soft);font-weight:700;white-space:nowrap;font-size:.9rem}
+.in input{width:100%;min-width:62px;font-family:var(--font-num);font-size:1rem;text-align:center;border:1px solid var(--line);
+  border-radius:6px;padding:6px 4px;background:var(--bg);color:var(--ink)}
+.in input.name{font-family:var(--font-display);font-size:.85rem}
+.in input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.in input.bad{border-color:var(--hot);outline-color:var(--hot)}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+button{font-family:var(--font-display);font-weight:700;font-size:.85rem;border:1px solid var(--accent);color:var(--accent);
+  background:transparent;border-radius:6px;padding:6px 12px;cursor:pointer}
+button:hover{background:var(--accent-soft)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--panel)}
+.label{font-size:.8rem;color:var(--muted)}
+textarea{width:100%;min-height:92px;font-family:var(--font-num);font-size:.85rem;border:1px solid var(--line);border-radius:6px;
+  padding:8px;background:var(--bg);color:var(--ink);resize:vertical}
+details.paste{margin-top:12px}
+details.paste summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--accent)}
+.msg{font-size:.85rem;min-height:1.4em;color:var(--muted)}
+.msg.err{color:var(--hot)}
+.badge{font-size:.75rem;font-weight:700;border-radius:999px;padding:2px 10px;background:var(--accent-soft);color:var(--accent)}
+
+.board{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:16px}
+@media (max-width:760px){.board{grid-template-columns:1fr}}
+.res td{padding:4px 6px;vertical-align:middle}
+.lane{display:inline-flex;width:30px;height:30px;border-radius:50%;align-items:center;justify-content:center;font-family:var(--font-num);
+  font-weight:600;border:2px solid var(--ink)}
+.l1{background:var(--b1);color:var(--b1t)}.l2{background:var(--b2);color:var(--b2t)}.l3{background:var(--b3);color:var(--b3t)}
+.l4{background:var(--b4);color:var(--b4t)}.l5{background:var(--b5);color:var(--b5t)}.l6{background:var(--b6);color:var(--b6t)}
+.rname{font-size:.85rem;font-weight:700;text-align:left;white-space:nowrap}
+.v{font-family:var(--font-num);font-size:1.15rem;font-weight:600;line-height:1.2}
+.d{font-family:var(--font-num);font-size:.72rem;color:var(--muted);line-height:1.1}
+.d.plus{color:var(--hot);font-weight:600}
+td.k1{background:var(--r1)}td.k2{background:var(--r2)}td.k3{background:var(--r3)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:4px;border:1px solid var(--line)}
+.ref{color:var(--muted)}
+
+.power{display:flex;flex-direction:column;gap:6px}
+.prow{display:grid;grid-template-columns:44px 30px minmax(0,1fr);align-items:center;gap:8px;min-height:40px}
+.prank{font-weight:900;font-size:.95rem;text-align:right}
+.prank.top{color:var(--hot)}
+.ptrack{position:relative;height:30px;background:var(--bg);border-radius:4px;overflow:hidden}
+.pfill{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,var(--accent-soft),var(--bar));border-radius:4px;transition:width .3s}
+.pfill.top{background:linear-gradient(90deg,var(--accent-soft),var(--bar-top))}
+.pval{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:var(--font-num);font-weight:600;font-size:1.05rem}
+.ptick{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed var(--muted);opacity:.6}
+.pnote{font-size:.75rem;color:var(--muted)}
+.notes{font-size:.85rem;color:var(--muted)}
+.notes table{font-size:.8rem;margin:8px 0}
+.notes code{font-family:var(--font-num)}
+@media (prefers-reduced-motion:reduce){.pfill{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>新加速タイム計算機</h1>
+    <p>展示情報の4つのタイムから、出足・中間速・伸びとエンジンパワーを計算します。入力するとすぐに再計算されます。</p>
+  </header>
+
+  <section class="panel">
+    <h2>展示情報を入力 <small>小数点は省略できます（685 → 6.85、3676 → 36.76）</small></h2>
+    <div class="scroll">
+      <table class="in" aria-label="展示情報の入力">
+        <thead><tr><th>進入</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr></thead>
+        <tbody id="inBody"></tbody>
+      </table>
+    </div>
+    <div class="tools">
+      <button id="clearBtn">すべて消去</button>
+    </div>
+    <details class="paste">
+      <summary>展示情報の表をまとめて貼り付け</summary>
+      <p class="label">展示情報サイトの表（進入〜直線）をコピーして貼り付けてください。数字を順番に読み取ります：展示×6、周回×6、周り足×6、直線×6（先頭の進入 1〜6 は自動で除きます）。</p>
+      <textarea id="pasteBox" placeholder="例：&#10;進入	1	2	3	4	5	6&#10;展示	6.85	6.79	6.74	6.78	6.85	6.81&#10;…"></textarea>
+      <div class="tools"><button class="primary" id="pasteBtn">貼り付けた値を入力欄に反映</button><span class="msg" id="pasteMsg"></span></div>
+    </details>
+    <p class="msg" id="inMsg"></p>
+  </section>
+
+  <section class="panel">
+    <h2>新加速タイム <small>km/h ・ 下の小さい数字は6艇平均との差</small></h2>
+    <div class="board">
+      <div style="min-width:0">
+        <div class="scroll">
+          <table class="res" aria-label="新加速タイムの結果">
+            <thead><tr><th>進入</th><th>出足</th><th colspan="3">中間速</th><th>伸び</th></tr></thead>
+            <tbody id="resBody"></tbody>
+          </table>
+        </div>
+        <div class="legend"><span><i style="background:var(--r1)"></i>1位</span><span><i style="background:var(--r2)"></i>2位</span><span><i style="background:var(--r3)"></i>3位</span><span>赤字の差：+1.0以上</span></div>
+      </div>
+      <div>
+        <h2 style="margin-bottom:8px">エンジンパワー</h2>
+        <div class="power" id="power"></div>
+        <p class="pnote">点線は平均の70。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel notes">
+    <h2>計算方法</h2>
+    <p>1. 区間速度 ＝ 進入ごとの定数 ÷ タイム（内側のコースほど走る距離が短いため、定数が小さくなります）</p>
+    <div class="scroll"><table>
+      <thead><tr><th>区間</th><th>使うタイム</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr></thead>
+      <tbody id="kBody"></tbody>
+    </table></div>
+    <p>2. 差 ＝ 区間速度 − 6艇の平均<br>
+    3. エンジンパワー ＝ 70 ＋ 0.92×出足差 ＋ 4.08×中1差 ＋ 3.55×中2差 − 1.40×中3差 ＋ 4.65×伸び差<br>
+    4. 評価 ＝ エンジンパワーの高い順</p>
+    <p>定数と重みは推定値です。</p>
+  </section>
+</div>
+
+<script>
+const ROWS=[{key:"E",label:"展示"},{key:"L",label:"周回"},{key:"T",label:"周り足"},{key:"S",label:"直線"}];
+// 進入1〜6ごとの定数（km/h × 秒）
+const K={
+  start:[279.74,282.91,286.64,287.98,288.66,288.68],
+  mid1:[799.64,804.98,813.00,814.99,816.39,816.56],
+  mid2:[519.55,520.95,522.25,522.60,523.07,523.27],
+  mid3:[1065.97,1068.57,1070.37,1070.53,1071.97,1072.36],
+  nobi:[537.30,539.41,539.83,540.44,540.52,540.56]
+};
+const COLS=[
+  {id:"start",label:"出足",time:"周り足",f:(r,i)=>K.start[i]/r.T},
+  {id:"mid1",label:"中間速1",time:"周り足＋直線",f:(r,i)=>K.mid1[i]/(r.T+r.S)},
+  {id:"mid2",label:"中間速2",time:"直線",f:(r,i)=>K.mid2[i]/r.S},
+  {id:"mid3",label:"中間速3",time:"直線＋展示",f:(r,i)=>K.mid3[i]/(r.S+r.E)},
+  {id:"nobi",label:"伸び",time:"展示",f:(r,i)=>K.nobi[i]/r.E}
+];
+const W={base:70,w:[0.92,4.077,3.548,-1.404,4.654]};
+const RANGE={E:[6,8],L:[34,42],T:[4.5,8],S:[6.5,9.5]};
+const $=id=>document.getElementById(id);
+
+function buildInputs(){
+  let h="";
+  for(const r of ROWS){
+    h+=`<tr><th>${r.label}</th>${[0,1,2,3,4,5].map(i=>`<td><input id="${r.key}${i}" inputmode="decimal" aria-label="進入${i+1} ${r.label}"></td>`).join("")}</tr>`;
+  }
+  $("inBody").innerHTML=h;
+  $("inBody").addEventListener("input",calc);
+  // 欄を離れたら 685 → 6.85 の形に表示し直す
+  $("inBody").addEventListener("focusout",e=>{
+    const raw=norm(e.target.value);
+    if(/^\d+$/.test(raw)) e.target.value=toTime(raw).toFixed(2);
+    setTimeout(calc,0);
+  });
+  $("kBody").innerHTML=COLS.map(c=>`<tr><th>${c.label}</th><td>${c.time}</td>${K[c.id].map(v=>`<td>${v.toFixed(1)}</td>`).join("")}</tr>`).join("");
+}
+function fill(s){
+  for(let i=0;i<6;i++){
+    for(const r of ROWS) $(r.key+i).value=s[r.key]?.[i]!=null?s[r.key][i].toFixed(2):"";
+  }
+  calc();
+}
+function read(){
+  const rows=[];let bad=0,empty=0;
+  for(let i=0;i<6;i++){
+    const r={};
+    for(const k of ROWS){
+      const el=$(k.key+i),raw=norm(el.value);
+      const v=toTime(raw);
+      const ok=raw!==""&&isFinite(v)&&v>=RANGE[k.key][0]&&v<=RANGE[k.key][1];
+      // 小数点なしで入力途中の欄は、入力が終わるまで赤枠にしない
+      const typing=!ok&&/^\d+$/.test(raw)&&el===document.activeElement;
+      el.classList.toggle("bad",raw!==""&&!ok&&!typing);
+      if(raw==="")empty++;else if(!ok&&!typing)bad++;
+      r[k.key]=ok?v:null;
+    }
+    rows.push(r);
+  }
+  return {rows,bad,empty};
+}
+const fmt=v=>v==null?"—":v.toFixed(1);
+const norm=s=>s.trim().replace(/[０-９．]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+// 小数点なしの数字は下2桁を小数として読む（685 → 6.85、3676 → 36.76）
+const toTime=s=>/^\d+$/.test(s)?Number(s)/100:parseFloat(s);
+function calc(){
+  const {rows,bad}=read();
+  const need=["E","T","S"];
+  const ready=rows.every(r=>need.every(k=>r[k]!=null));
+  const m=$("inMsg");
+  if(bad){m.textContent="赤枠の欄は数値が範囲外です（展示6〜8秒、周回34〜42秒、周り足4.5〜8秒、直線6.5〜9.5秒）。";m.className="msg err"}
+  else if(!ready){m.textContent="6艇すべての展示・周り足・直線を入力すると計算します（周回は計算に使いません）。";m.className="msg"}
+  else{m.textContent="";m.className="msg"}
+  const V=rows.map((r,i)=>COLS.map(c=>need.every(k=>r[k]!=null)?c.f(r,i):null));
+  const mean=COLS.map((_,j)=>ready?V.reduce((a,row)=>a+row[j],0)/6:null);
+  const D=V.map(row=>row.map((v,j)=>ready?v-mean[j]:null));
+  // 各列の順位（小数1桁に丸めて同値は同順位）
+  const rank=COLS.map((_,j)=>{
+    const vals=V.map(row=>row[j]==null?null:Math.round(row[j]*10)/10);
+    return vals.map(v=>v==null?null:1+vals.filter(x=>x!=null&&x>v).length);
+  });
+  let h="";
+  for(let i=0;i<6;i++){
+    h+=`<tr><td><span class="lane l${i+1}">${i+1}</span></td>`;
+    COLS.forEach((c,j)=>{
+      const k=ready&&rank[j][i]<=3?` k${rank[j][i]}`:"";
+      const d=D[i][j];
+      h+=`<td class="${k.trim()}"><div class="v">${fmt(V[i][j])}</div><div class="d${d!=null&&d>=1?" plus":""}">${d==null?"":(d>=0?"+":"")+d.toFixed(1)}</div></td>`;
+    });
+    h+=`</tr>`;
+  }
+  $("resBody").innerHTML=h;
+  // エンジンパワー
+  const P=D.map(row=>ready?W.base+row.reduce((a,d,j)=>a+W.w[j]*d,0):null);
+  const pr=P.map(p=>p==null?null:1+P.filter(x=>x!=null&&Math.round(x)>Math.round(p)).length);
+  const lo=50,hi=90,pct=v=>Math.max(4,Math.min(100,(v-lo)/(hi-lo)*100));
+  $("power").innerHTML=P.map((p,i)=>`<div class="prow">
+      <div class="prank${pr[i]===1?" top":""}">${pr[i]?pr[i]+"位":"—"}</div>
+      <span class="lane l${i+1}">${i+1}</span>
+      <div class="ptrack"><div class="ptick" style="left:${pct(70)}%"></div>
+        <div class="pfill${pr[i]===1?" top":""}" style="width:${p==null?0:pct(p)}%"></div>
+        <span class="pval">${p==null?"—":Math.round(p)}</span></div></div>`).join("");
+}
+function parsePaste(){
+  const txt=$("pasteBox").value.replace(/[０-９．]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+  let nums=(txt.match(/\d+(?:\.\d+)?/g)||[]).map(t=>t.includes(".")||t.length<3?Number(t):Number(t)/100);
+  if(nums.length>=30&&nums.slice(0,6).join()==="1,2,3,4,5,6") nums=nums.slice(6);
+  const msg=$("pasteMsg");
+  if(nums.length<24){msg.textContent=`数字が${nums.length}個しか見つかりません。24個（4項目×6艇）必要です。`;msg.className="msg err";return}
+  const s={};
+  ROWS.forEach((r,k)=>s[r.key]=nums.slice(k*6,k*6+6));
+  fill(s);
+  msg.textContent="反映しました。";msg.className="msg";
+}
+buildInputs();
+$("clearBtn").addEventListener("click",()=>fill({}));
+$("pasteBtn").addEventListener("click",parsePaste);
+calc();
+</script>
+
+</html>
