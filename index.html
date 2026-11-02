@@ -175,7 +175,7 @@ const COLS=[
   {id:"nobi",label:"伸び",time:"展示",f:(r,i)=>K.nobi[i]/r.E}
 ];
 const W={base:70,w:[0.92,4.077,3.548,-1.404,4.654]};
-const RANGE={E:[6,8],L:[34,42],T:[4.5,8],S:[6.5,9.5]};
+const RANGE={E:[6,8],L:[34,42],T:[4.5,14],S:[6,9.5]};
 const $=id=>document.getElementById(id);
 
 function buildInputs(){
@@ -204,7 +204,8 @@ function read(){
   for(let i=0;i<6;i++){
     const r={};
     for(const k of ROWS){
-      const el=$(k.key+i),raw=norm(el.value);
+      // 「-」だけの欄は空欄として扱う
+      const el=$(k.key+i),raw=norm(el.value).replace(/^[-－—ー−]+$/,"");
       const v=toTime(raw);
       const ok=raw!==""&&isFinite(v)&&v>=RANGE[k.key][0]&&v<=RANGE[k.key][1];
       // 小数点なしで入力途中の欄は、入力が終わるまで赤枠にしない
@@ -213,6 +214,8 @@ function read(){
       if(raw==="")empty++;else if(!ok&&!typing)bad++;
       r[k.key]=ok?v:null;
     }
+    // 直線タイムがない艇は展示タイムで代用する（直線と展示を同じ位置で計測する場では直線の計測がない）
+    if(r.S==null&&r.E!=null&&!$("S"+i).classList.contains("bad")){r.S=r.E;r.Ssub=true}
     rows.push(r);
   }
   return {rows,bad,empty};
@@ -226,9 +229,9 @@ function calc(){
   const need=["E","T","S"];
   const ready=rows.every(r=>need.every(k=>r[k]!=null));
   const m=$("inMsg");
-  if(bad){m.textContent="赤枠の欄は数値が範囲外です（展示6〜8秒、周回34〜42秒、周り足4.5〜8秒、直線6.5〜9.5秒）。";m.className="msg err"}
-  else if(!ready){m.textContent="6艇すべての展示・周り足・直線を入力すると計算します（周回は計算に使いません）。";m.className="msg"}
-  else{m.textContent="";m.className="msg"}
+  if(bad){m.textContent="赤枠の欄は数値が範囲外です（展示6〜8秒、周回34〜42秒、周り足4.5〜14秒、直線6〜9.5秒）。";m.className="msg err"}
+  else if(!ready){m.textContent="6艇すべての展示・周り足を入力すると計算します（直線が空欄や「-」なら展示タイムで計算。周回は計算に使いません）。";m.className="msg"}
+  else{m.textContent=rows.some(r=>r.Ssub)?"直線タイムがない艇は、展示タイムと同じ値で計算しています。":"";m.className="msg"}
   const V=rows.map((r,i)=>COLS.map(c=>need.every(k=>r[k]!=null)?c.f(r,i):null));
   const mean=COLS.map((_,j)=>ready?V.reduce((a,row)=>a+row[j],0)/6:null);
   const D=V.map(row=>row.map((v,j)=>ready?v-mean[j]:null));
@@ -243,7 +246,7 @@ function calc(){
     COLS.forEach((c,j)=>{
       const k=ready&&rank[j][i]<=3?` k${rank[j][i]}`:"";
       const d=D[i][j];
-      h+=`<td class="${k.trim()}"><div class="v">${fmt(V[i][j])}</div><div class="d${d!=null&&d>=1?" plus":""}">${d==null?"":(d>=0?"+":"")+d.toFixed(1)}</div></td>`;
+      h+=`<td class="${k.trim()}"><div class="v">${fmt(V[i][j])}</div><div class="d${d!=null&&d>=1?" plus":""}">${d==null?"":Math.abs(d)<0.05?"0.0":(d>0?"+":"")+d.toFixed(1)}</div></td>`;
     });
     h+=`</tr>`;
   }
@@ -261,9 +264,16 @@ function calc(){
 }
 function parsePaste(){
   const txt=$("pasteBox").value.replace(/[０-９．]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+  const msg=$("pasteMsg");
+  // 「展示」「周回」「周り足」「直線」で始まる行は行ごとに読む（「-」は空欄）
+  const LABEL={"展示":"E","周回":"L","周り足":"T","直線":"S"},byRow={};
+  for(const line of txt.split(/\r?\n/)){
+    const cells=line.trim().split(/[\s,]+/),key=LABEL[cells[0]];
+    if(key) byRow[key]=cells.slice(1,7).map(t=>/^\d+(\.\d+)?$/.test(t)?(t.includes(".")||t.length<3?Number(t):Number(t)/100):null);
+  }
+  if(byRow.E||byRow.T){fill(byRow);msg.textContent="反映しました。";msg.className="msg";return}
   let nums=(txt.match(/\d+(?:\.\d+)?/g)||[]).map(t=>t.includes(".")||t.length<3?Number(t):Number(t)/100);
   if(nums.length>=30&&nums.slice(0,6).join()==="1,2,3,4,5,6") nums=nums.slice(6);
-  const msg=$("pasteMsg");
   if(nums.length<24){msg.textContent=`数字が${nums.length}個しか見つかりません。24個（4項目×6艇）必要です。`;msg.className="msg err";return}
   const s={};
   ROWS.forEach((r,k)=>s[r.key]=nums.slice(k*6,k*6+6));
