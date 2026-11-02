@@ -201,7 +201,8 @@ const COLS=[
   {id:"nobi",label:"伸び",time:"展示",f:(r,i)=>K.nobi[i]/r.E}
 ];
 const W={base:70,w:[0.92,4.077,3.548,-1.404,4.654]};
-const RANGE={E:[6,8],L:[34,42],T:[4.5,14],S:[6,9.5]};
+// 入力ミス（桁違いなど）だけを弾くための範囲。場によって計測区間が違うので広めにとる
+const RANGE={E:[5,9],L:[30,45],T:[3,15],S:[3,12]};
 const $=id=>document.getElementById(id);
 
 function buildInputs(){
@@ -255,7 +256,7 @@ function calc(){
   const need=["E","T","S"];
   const ready=rows.every(r=>need.every(k=>r[k]!=null));
   const m=$("inMsg");
-  if(bad){m.textContent="赤枠の欄は数値が範囲外です（展示6〜8秒、周回34〜42秒、周り足4.5〜14秒、直線6〜9.5秒）。";m.className="msg err"}
+  if(bad){m.textContent=`赤枠の欄は数値が範囲外です（${ROWS.map(r=>`${r.label}${RANGE[r.key][0]}〜${RANGE[r.key][1]}秒`).join("、")}）。`;m.className="msg err"}
   else if(!ready){m.textContent="6艇すべての展示・周り足を入力すると計算します（直線が空欄や「-」なら展示タイムで計算。周回は計算に使いません）。";m.className="msg"}
   else{m.textContent=rows.some(r=>r.Ssub)?"直線タイムがない艇は、展示タイムと同じ値で計算しています。":"";m.className="msg"}
   const V=rows.map((r,i)=>COLS.map(c=>need.every(k=>r[k]!=null)?c.f(r,i):null));
