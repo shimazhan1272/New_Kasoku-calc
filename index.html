@@ -88,6 +88,15 @@ td.k1{background:var(--r1)}td.k2{background:var(--r2)}td.k3{background:var(--r3)
 .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin-top:8px}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:4px;border:1px solid var(--line)}
 .ref{color:var(--muted)}
+/* 進入の入れ替え：艇番の丸をドラッグ */
+.order td{padding:6px 4px;background:var(--bg)}
+.chip{border:0;background:none;padding:2px 6px;cursor:grab;touch-action:none;display:inline-flex;align-items:center;gap:4px;border-radius:999px}
+.chip:hover{background:var(--accent-soft)}
+.chip .grip{color:var(--muted);font-size:.8rem;letter-spacing:-2px}
+.chip.drag{cursor:grabbing;background:var(--accent-soft);outline:2px dashed var(--accent)}
+.chip .lane{pointer-events:none}
+td.moved{background:var(--accent-soft)}
+.cno{font-family:var(--font-num);font-weight:600;color:var(--muted);font-size:.8rem;margin-right:4px}
 
 .power{display:flex;flex-direction:column;gap:6px}
 .prow{display:grid;grid-template-columns:44px 30px minmax(0,1fr);align-items:center;gap:8px;min-height:40px}
@@ -115,12 +124,16 @@ td.k1{background:var(--r1)}td.k2{background:var(--r2)}td.k3{background:var(--r3)
     <h2>展示情報を入力 <small>小数点は省略できます（685 → 6.85、3676 → 36.76）</small></h2>
     <div class="scroll">
       <table class="in" aria-label="展示情報の入力">
-        <thead><tr><th>進入</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr></thead>
+        <thead><tr id="courseHead"><th>進入</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr>
+          <tr class="order" id="orderRow"></tr></thead>
         <tbody id="inBody"></tbody>
       </table>
     </div>
+    <p class="label">前付けなどで進入が変わったときは、艇番の丸を左右にドラッグして入れ替えてください（丸を選んで ← → キーでも動かせます）。入力した値は艇と一緒に移動します。</p>
     <div class="tools">
       <button id="clearBtn">すべて消去</button>
+      <button id="resetOrderBtn">枠なり（1〜6）に戻す</button>
+      <span class="msg" id="orderMsg"></span>
     </div>
     <div class="paste">
       <div class="paste-head"><h3>展示情報の表をまとめて貼り付け</h3><button id="pasteClearBtn">削除</button></div>
@@ -137,7 +150,7 @@ td.k1{background:var(--r1)}td.k2{background:var(--r2)}td.k3{background:var(--r3)
       <div style="min-width:0">
         <div class="scroll">
           <table class="res" aria-label="新加速タイムの結果">
-            <thead><tr><th>進入</th><th>出足</th><th colspan="3">中間速</th><th>伸び</th></tr></thead>
+            <thead><tr><th>進入・艇</th><th>出足</th><th colspan="3">中間速</th><th>伸び</th></tr></thead>
             <tbody id="resBody"></tbody>
           </table>
         </div>
@@ -204,13 +217,18 @@ const W={base:70,w:[0.92,4.077,3.548,-1.404,4.654]};
 // 入力ミス（桁違いなど）だけを弾くための範囲。場によって計測区間が違うので広めにとる
 const RANGE={E:[5,9],L:[30,45],T:[3,15],S:[3,12]};
 const $=id=>document.getElementById(id);
+// 進入コース順に並べた艇（0始まりの艇番）。ord[コース] = 艇
+let ord=[0,1,2,3,4,5];
 
 function buildInputs(){
+  // 入力欄のidは艇番で固定し、表示順だけを ord に合わせて並べ替える
+  $("orderRow").innerHTML=`<th>艇番</th>`+[0,1,2,3,4,5].map(b=>`<td data-b="${b}"><button class="chip" data-b="${b}" aria-label="${b+1}号艇（ドラッグで進入を変更）"><span class="grip">⋮⋮</span><span class="lane l${b+1}">${b+1}</span></button></td>`).join("");
   let h="";
   for(const r of ROWS){
-    h+=`<tr><th>${r.label}</th>${[0,1,2,3,4,5].map(i=>`<td><input id="${r.key}${i}" inputmode="decimal" aria-label="進入${i+1} ${r.label}"></td>`).join("")}</tr>`;
+    h+=`<tr><th>${r.label}</th>${[0,1,2,3,4,5].map(b=>`<td data-b="${b}"><input id="${r.key}${b}" inputmode="decimal" aria-label="${b+1}号艇 ${r.label}"></td>`).join("")}</tr>`;
   }
   $("inBody").innerHTML=h;
+  setupDrag();
   $("inBody").addEventListener("input",calc);
   // 欄を離れたら 685 → 6.85 の形に表示し直す
   $("inBody").addEventListener("focusout",e=>{
@@ -220,10 +238,59 @@ function buildInputs(){
   });
   $("kBody").innerHTML=COLS.map(c=>`<tr><th>${c.label}</th><td>${c.time}</td>${K[c.id].map(v=>`<td>${v.toFixed(1)}</td>`).join("")}</tr>`).join("");
 }
-function fill(s){
-  for(let i=0;i<6;i++){
-    for(const r of ROWS) $(r.key+i).value=s[r.key]?.[i]!=null?s[r.key][i].toFixed(2):"";
+// 表の列を ord の順に並べ直す（input要素ごと動かすので値はそのまま）
+function layout(){
+  for(const tr of [$("orderRow"),...$("inBody").rows]){
+    const cells=[...tr.querySelectorAll("td[data-b]")];
+    ord.forEach((b,c)=>{
+      const td=cells.find(x=>x.dataset.b==b);
+      td.classList.toggle("moved",b!==c);
+      tr.appendChild(td);
+    });
   }
+  const moved=ord.some((b,c)=>b!==c);
+  $("orderMsg").textContent=moved?"進入："+ord.map(b=>b+1).join(" "):"";
+}
+function moveBoat(b,to){
+  const from=ord.indexOf(b);
+  to=Math.max(0,Math.min(5,to));
+  if(from===to)return false;
+  ord.splice(from,1);ord.splice(to,0,b);
+  layout();calc();
+  return true;
+}
+function setupDrag(){
+  const row=$("orderRow");
+  let drag=null;
+  // ポインタの位置から、どの進入コースの列の上にいるかを求める
+  const courseAt=x=>{
+    const ths=[...$("courseHead").children].slice(1);
+    let best=0,bd=Infinity;
+    ths.forEach((th,c)=>{const r=th.getBoundingClientRect(),d=Math.abs(x-(r.left+r.right)/2);if(d<bd){bd=d;best=c}});
+    return best;
+  };
+  row.addEventListener("pointerdown",e=>{
+    const chip=e.target.closest(".chip");if(!chip)return;
+    e.preventDefault();chip.focus();
+    drag={chip,b:+chip.dataset.b};
+    chip.setPointerCapture(e.pointerId);chip.classList.add("drag");
+  });
+  row.addEventListener("pointermove",e=>{if(drag)moveBoat(drag.b,courseAt(e.clientX))});
+  const end=()=>{if(drag){drag.chip.classList.remove("drag");drag=null}};
+  row.addEventListener("pointerup",end);row.addEventListener("pointercancel",end);
+  row.addEventListener("keydown",e=>{
+    const chip=e.target.closest(".chip");if(!chip)return;
+    const b=+chip.dataset.b,dir=e.key==="ArrowLeft"?-1:e.key==="ArrowRight"?1:0;
+    if(!dir)return;
+    e.preventDefault();
+    if(moveBoat(b,ord.indexOf(b)+dir))chip.focus();
+  });
+}
+// 値は表示されている列の順（進入順）に入れる
+function fill(s){
+  ord.forEach((b,c)=>{
+    for(const r of ROWS) $(r.key+b).value=s[r.key]?.[c]!=null?s[r.key][c].toFixed(2):"";
+  });
   calc();
 }
 function read(){
@@ -252,7 +319,9 @@ const norm=s=>s.trim().replace(/[０-９．]/g,c=>String.fromCharCode(c.charCode
 // 小数点なしの数字は下2桁を小数として読む（685 → 6.85、3676 → 36.76）
 const toTime=s=>/^\d+$/.test(s)?Number(s)/100:parseFloat(s);
 function calc(){
-  const {rows,bad}=read();
+  const {rows:byBoat,bad}=read();
+  // 以降は進入コース順（定数はコースで決まる）
+  const rows=ord.map(b=>byBoat[b]);
   const need=["E","T","S"];
   const ready=rows.every(r=>need.every(k=>r[k]!=null));
   const m=$("inMsg");
@@ -269,7 +338,7 @@ function calc(){
   });
   let h="";
   for(let i=0;i<6;i++){
-    h+=`<tr><td><span class="lane l${i+1}">${i+1}</span></td>`;
+    h+=`<tr><td style="white-space:nowrap"><span class="cno">${i+1}</span><span class="lane l${ord[i]+1}">${ord[i]+1}</span></td>`;
     COLS.forEach((c,j)=>{
       const k=ready&&rank[j][i]<=3?` k${rank[j][i]}`:"";
       const d=D[i][j];
@@ -284,7 +353,7 @@ function calc(){
   const lo=50,hi=90,pct=v=>Math.max(4,Math.min(100,(v-lo)/(hi-lo)*100));
   $("power").innerHTML=P.map((p,i)=>`<div class="prow">
       <div class="prank${pr[i]===1?" top":""}">${pr[i]?pr[i]+"位":"—"}</div>
-      <span class="lane l${i+1}">${i+1}</span>
+      <span class="lane l${ord[i]+1}">${ord[i]+1}</span>
       <div class="ptrack"><div class="ptick" style="left:${pct(70)}%"></div>
         <div class="pfill${pr[i]===1?" top":""}" style="width:${p==null?0:pct(p)}%"></div>
         <span class="pval">${p==null?"—":Math.round(p)}</span></div></div>`).join("");
@@ -309,6 +378,7 @@ function parsePaste(){
 }
 buildInputs();
 $("clearBtn").addEventListener("click",()=>fill({}));
+$("resetOrderBtn").addEventListener("click",()=>{ord=[0,1,2,3,4,5];layout();calc()});
 $("pasteBtn").addEventListener("click",parsePaste);
 $("pasteClearBtn").addEventListener("click",()=>{$("pasteBox").value="";$("pasteMsg").textContent="";$("pasteBox").focus()});
 calc();
