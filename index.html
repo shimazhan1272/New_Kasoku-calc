@@ -64,10 +64,6 @@ textarea{width:100%;min-height:92px;font-family:var(--font-num);font-size:.85rem
 .paste-head h3{margin:0;font-size:.95rem;font-weight:700}
 .paste .label{margin:0}
 .paste .tools{margin-top:0}
-.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:84px;padding:12px;
-  border:2px dashed var(--line);border-radius:8px;background:var(--bg);color:var(--muted);font-size:.85rem;text-align:center;cursor:pointer}
-.drop:hover,.drop.over,.drop:focus-visible{border-color:var(--accent);color:var(--ink);outline:none}
-.drop img{max-width:100%;max-height:200px;border-radius:4px}
 .terms{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
 .terms>div{border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
 .terms dt{font-weight:900;font-size:1rem;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
@@ -145,15 +141,6 @@ td.moved{background:var(--accent-soft)}
       <textarea id="pasteBox" placeholder="例：&#10;進入	1	2	3	4	5	6&#10;展示	6.85	6.79	6.74	6.78	6.85	6.81&#10;…"></textarea>
       <div class="tools"><button class="primary" id="pasteBtn">貼り付けた値を入力欄に反映</button><span class="msg" id="pasteMsg"></span></div>
     </div>
-    <div class="paste">
-      <div class="paste-head"><h3>スクリーンショットから読み取り</h3></div>
-      <label class="drop" id="drop" tabindex="0">
-        <input type="file" id="imgFile" accept="image/*" hidden>
-        <span><b>Ctrl+V</b> でスクリーンショットを貼り付け、またはここに画像をドロップ／クリックして選択</span>
-        <img id="imgPrev" alt="読み取ったスクリーンショット" hidden>
-      </label>
-      <p class="label">展示情報の表（「展示」「周回」「周り足」「直線」の行）が写った画像から数字を読み取ります。読み取った内容は上の欄に入るので、間違いがあれば直して「反映」を押してください。画像はこのブラウザの中だけで処理し、外部には送りません（初回は読み取り用データの読み込みに数秒かかります）。</p>
-    </div>
     <p class="msg" id="inMsg"></p>
   </section>
 
@@ -163,7 +150,8 @@ td.moved{background:var(--accent-soft)}
       <div style="min-width:0">
         <div class="scroll">
           <table class="res" aria-label="新加速タイムの結果">
-            <thead><tr><th>進入・艇</th><th>出足</th><th colspan="3">中間速</th><th>伸び</th></tr></thead>
+            <thead><tr><th rowspan="2">進入・艇</th><th rowspan="2">出足</th><th colspan="3">中間速</th><th rowspan="2">伸び</th></tr>
+              <tr><th>中間速1</th><th>中間速2</th><th>中間速3</th></tr></thead>
             <tbody id="resBody"></tbody>
           </table>
         </div>
@@ -389,197 +377,7 @@ function parsePaste(){
   fill(s);
   msg.textContent="反映しました。";msg.className="msg";
 }
-// ---- スクリーンショットの読み取り（Tesseract.js、ブラウザ内で処理） ----
-// 行名は日本語で、数字は数字だけを読む設定で、2回に分けて読み取る
-let ocrWorkers=null;
-const loadScript=src=>new Promise((ok,ng)=>{const s=document.createElement("script");s.src=src;s.onload=ok;s.onerror=ng;document.head.appendChild(s)});
-async function getWorkers(msg){
-  if(ocrWorkers)return ocrWorkers;
-  msg("読み取りの準備をしています…（初回のみ数秒かかります）");
-  if(!window.Tesseract)await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
-  const [jpn,num,cell]=await Promise.all([Tesseract.createWorker("jpn"),Tesseract.createWorker("eng"),Tesseract.createWorker("eng")]);
-  // 表全体は1つの文章ブロックとして、セルは1行として読む
-  await jpn.setParameters({tessedit_pageseg_mode:"6"});
-  await num.setParameters({tessedit_pageseg_mode:"6",tessedit_char_whitelist:"0123456789.-"});
-  await cell.setParameters({tessedit_pageseg_mode:"7",tessedit_char_whitelist:"0123456789.-"});
-  return ocrWorkers={jpn,num,cell};
-}
-// 読み取り精度を上げるため、白地に黒文字の画像に直す。
-// 色付きのセル（赤・黄・青）は背景として消し、その中の白い文字は黒に変える。暗い背景の画像は先に反転する。
-async function prepImage(file){
-  const bmp=await createImageBitmap(file);
-  const sc=Math.max(1,Math.min(3,1800/bmp.width));
-  const W=Math.round(bmp.width*sc),H=Math.round(bmp.height*sc);
-  const cv=document.createElement("canvas");cv.width=W;cv.height=H;
-  const cx=cv.getContext("2d",{willReadFrequently:true});cx.imageSmoothingQuality="high";cx.drawImage(bmp,0,0,W,H);
-  // 色を残した拡大画像（セルごとの読み取りに使う）
-  const src=document.createElement("canvas");src.width=W;src.height=H;
-  src.getContext("2d",{willReadFrequently:true}).drawImage(cv,0,0);
-  const img=cx.getImageData(0,0,W,H),d=img.data,n=W*H;
-  let sum=0;
-  for(let i=0;i<d.length;i+=4)sum+=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
-  if(sum/n<128)for(let i=0;i<d.length;i+=4){d[i]=255-d[i];d[i+1]=255-d[i+1];d[i+2]=255-d[i+2]}
-  // 色付き画素の積分画像（周りがどれだけ色付きかを素早く数える）
-  const col=new Uint8Array(n),I=new Uint32Array((W+1)*(H+1));
-  for(let p=0;p<n;p++){const i=p*4;col[p]=Math.max(d[i],d[i+1],d[i+2])-Math.min(d[i],d[i+1],d[i+2])>80?1:0}
-  for(let y=0;y<H;y++){let row=0;for(let x=0;x<W;x++){row+=col[y*W+x];I[(y+1)*(W+1)+x+1]=I[y*(W+1)+x+1]+row}}
-  const R=Math.round(20*sc/1.5);
-  const frac=(x,y)=>{
-    const x0=Math.max(0,x-R),y0=Math.max(0,y-R),x1=Math.min(W,x+R+1),y1=Math.min(H,y+R+1);
-    return (I[y1*(W+1)+x1]-I[y0*(W+1)+x1]-I[y1*(W+1)+x0]+I[y0*(W+1)+x0])/((x1-x0)*(y1-y0));
-  };
-  for(let p=0;p<n;p++){
-    const i=p*4,g=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
-    let v;
-    if(col[p])v=255;                                   // 色付きの背景 → 白
-    else if(g>170&&frac(p%W,(p/W)|0)>0.55)v=0;         // 色付きセルの中の白い文字 → 黒
-    else v=g<210?0:255;                                // 細い黒文字も太めに拾う
-    d[i]=d[i+1]=d[i+2]=v;
-  }
-  cx.putImageData(img,0,0);
-  return {cv,src};
-}
-// 行名の行と数字の行を、画像の上下の位置で対応させて「展示／周回／周り足／直線」の6つの値を取り出す
-function ocrToRows(jpnLines,numLines){
-  const keyOf=t=>{
-    const head=t.split(/\d/)[0].replace(/\s/g,"");
-    if(/情報/.test(head))return null;                   // 見出しの「展示情報」は行名ではない
-    return /周回|回/.test(head)?"L":/周り|り足|足/.test(head)?"T":/直|線/.test(head)?"S":/展|示/.test(head)?"E":null;
-  };
-  const mid=b=>(b.y0+b.y1)/2;
-  const labels=jpnLines.map(l=>({key:keyOf(l.text),y:mid(l.bbox)})).filter(l=>l.key);
-  const rows={},seq=[];
-  for(const l of numLines){
-    // 左端の行名の読み残りが混ざることがあるので、右から6つを使う
-    const toks=(l.text.match(/\d+(?:\.\d+)?|-+/g)||[]).filter(t=>t!=="."),vals=toks.slice(-6);
-    const lab=labels.find(x=>x.y>=l.bbox.y0-4&&x.y<=l.bbox.y1+4);
-    if(lab){if(!rows[lab.key])rows[lab.key]=vals}
-    else if(vals.length>=5&&vals.join()!=="1,2,3,4,5,6")seq.push(vals);
-  }
-  // 行名を読めなかったときは、数字の行を上から 展示→周回→周り足→直線 の順とみなす
-  if(Object.keys(rows).length<2)["E","L","T","S"].filter(k=>!rows[k]).forEach((k,i)=>{if(seq[i])rows[k]=seq[i]});
-  // 直線の「-」は読み落とされやすいので、行名があって数字がなければ「-」とする
-  for(const lab of labels)if(lab.key==="S"&&!(rows.S&&rows.S.length))rows.S=Array(6).fill("-");
-  return rows;
-}
-// 1つのセルを切り出し、セルの背景色と違う画素を黒、それ以外を白にする（背景が何色でも文字だけが残る）
-function cellCanvas(src,x0,y0,w,h){
-  x0=Math.max(0,Math.round(x0));y0=Math.max(0,Math.round(y0));
-  w=Math.round(Math.min(w,src.width-x0));h=Math.round(Math.min(h,src.height-y0));
-  const d=src.getContext("2d").getImageData(x0,y0,w,h).data;
-  // 背景色＝セル内でいちばん多い色
-  const cnt=new Map();let bg=0,best=0;
-  for(let i=0;i<d.length;i+=4){const k=(d[i]>>4)<<8|(d[i+1]>>4)<<4|(d[i+2]>>4),c=(cnt.get(k)||0)+1;cnt.set(k,c);if(c>best){best=c;bg=i}}
-  const br=d[bg],bgG=d[bg+1],bb=d[bg+2];
-  const sc=Math.max(1,60/h),pad=16;
-  const out=document.createElement("canvas");out.width=Math.round(w*sc)+pad*2;out.height=Math.round(h*sc)+pad*2;
-  const tmp=document.createElement("canvas");tmp.width=w;tmp.height=h;
-  const tc=tmp.getContext("2d"),img=tc.createImageData(w,h),o=img.data;
-  // 文字の濃さは画像によって違うので、セル内でいちばん背景と違う色を基準にしきい値を決める
-  const dist=new Float32Array(w*h);let mx=0;
-  for(let i=0,p=0;i<d.length;i+=4,p++){dist[p]=Math.abs(d[i]-br)+Math.abs(d[i+1]-bgG)+Math.abs(d[i+2]-bb);if(dist[p]>mx)mx=dist[p]}
-  const T=Math.max(45,mx*0.45);
-  for(let i=0,p=0;i<d.length;i+=4,p++){
-    const v=Math.max(0,Math.min(255,(T+25-dist[p])*255/50));
-    o[i]=o[i+1]=o[i+2]=v;o[i+3]=255;
-  }
-  tc.putImageData(img,0,0);
-  const oc=out.getContext("2d");oc.fillStyle="#fff";oc.fillRect(0,0,out.width,out.height);
-  oc.imageSmoothingQuality="high";oc.drawImage(tmp,pad,pad,out.width-pad*2,out.height-pad*2);
-  return out;
-}
-// 列見出しの「1〜6」と行名の位置から、各セルを1つずつ読む。見つからなければ null
-async function readCells(w,src,jpnLines,numWords,jpnWords){
-  const LBL=k=>/情報/.test(k)?null:/周回|回/.test(k)?"L":/周り|り足|足/.test(k)?"T":/直|線/.test(k)?"S":/展|示/.test(k)?"E":null;
-  const found=[];
-  for(const l of jpnLines){const k=LBL(l.text.split(/\d/)[0].replace(/\s/g,""));if(k)found.push({key:k,y:(l.bbox.y0+l.bbox.y1)/2})}
-  // 見出し行：1〜6の数字が3つ以上同じ高さに並んでいる行
-  // まず数字用の読み取り結果から探し、見つからなければ日本語用の結果も使う
-  const findHdr=words=>{
-    const heads=words.map(x=>({text:x.text.replace(/[^\d.]/g,""),bbox:x.bbox})).filter(x=>/^[1-6]$/.test(x.text));
-    let hdr=null;
-    for(const h of heads){
-      const row=heads.filter(x=>Math.abs((x.bbox.y0+x.bbox.y1)/2-(h.bbox.y0+h.bbox.y1)/2)<(h.bbox.y1-h.bbox.y0));
-      const uniq=[...new Map(row.map(x=>[x.text,x])).values()];
-      if(uniq.length>=3&&(!hdr||uniq.length>hdr.length))hdr=uniq;
-    }
-    return hdr;
-  };
-  const hdr=findHdr(numWords)||findHdr(jpnWords);
-  if(!hdr)return null;
-  const hdrY=hdr.reduce((s,x)=>s+(x.bbox.y0+x.bbox.y1)/2,0)/hdr.length;
-  const rowH=hdr.reduce((s,x)=>s+x.bbox.y1-x.bbox.y0,0)/hdr.length;
-  // 列の中心 x ＝ a ＋ b×(列番号)、を最小二乗で求める（読み落とした見出しも補える）
-  const pts=hdr.map(x=>[+x.text,(x.bbox.x0+x.bbox.x1)/2]);
-  const mx=pts.reduce((s,p)=>s+p[0],0)/pts.length,my=pts.reduce((s,p)=>s+p[1],0)/pts.length;
-  const b=pts.reduce((s,p)=>s+(p[0]-mx)*(p[1]-my),0)/pts.reduce((s,p)=>s+(p[0]-mx)**2,0),a=my-b*mx;
-  if(!(b>0))return null;
-  // 見出し行より下の行名だけを使う（上にある「展示情報」などの見出しを除く）
-  const ORDER=["E","L","T","S"],labels=[];
-  for(const l of found)if(l.y>hdrY+rowH&&!labels.some(x=>x.key===l.key))labels.push(l);
-  // 行の高さ：見出し行からの距離 ÷ 何行目か（進入→展示→周回→周り足→直線の順に並んでいる前提）の中央値
-  const est=labels.map(l=>(l.y-hdrY)/(ORDER.indexOf(l.key)+1)).sort((p,q)=>p-q);
-  const pitchY=est.length?est[est.length>>1]:rowH*2.3;
-  // 並び順どおりに読めた行名がひとつでもあれば、読めなかった行名の位置も補う
-  const fits=labels.filter(l=>Math.abs(l.y-(hdrY+pitchY*(ORDER.indexOf(l.key)+1)))<pitchY*0.3);
-  const rowsAt=fits.length?ORDER.map((k,i)=>({key:k,y:fits.find(l=>l.key===k)?.y??hdrY+pitchY*(i+1)})):labels;
-  if(!rowsAt.length)return null;
-  const rows={};
-  for(const l of rowsAt){
-    const cy=l.y,vals=[];
-    if(cy+pitchY*0.3>src.height)continue;               // 画像の外（その行が写っていない）
-    for(let k=1;k<=6;k++){
-      const cx=a+b*k;
-      const cell=cellCanvas(src,cx-b*0.42,cy-pitchY*0.4,b*0.84,pitchY*0.8);
-      const t=(await w.recognize(cell)).data.text.replace(/\s/g,"");
-      vals.push(/\d/.test(t)?(t.match(/\d+(?:\.\d+)?/)||[""])[0]:"-");
-    }
-    rows[l.key]=vals;
-  }
-  return rows;
-}
-async function readImage(file){
-  const msg=(t,err)=>{$("pasteMsg").textContent=t;$("pasteMsg").className=err?"msg err":"msg"};
-  const prev=$("imgPrev");prev.src=URL.createObjectURL(file);prev.hidden=false;
-  try{
-    const w=await getWorkers(msg);
-    msg("読み取り中…");
-    const {cv,src}=await prepImage(file);
-    const [a,b]=await Promise.all([w.jpn.recognize(cv),w.num.recognize(cv)]);
-    // まずセルごとに読み、表の形がつかめなければ行ごとの読み取りに切り替える
-    const rows=await readCells(w.cell,src,a.data.lines||[],b.data.words||[],a.data.words||[])||ocrToRows(a.data.lines||[],b.data.lines||[]);
-    const LBL={E:"展示",L:"周回",T:"周り足",S:"直線"};
-    const got=ROWS.filter(r=>rows[r.key]);
-    if(!rows.E&&!rows.T){msg("表の数字を読み取れませんでした。表の部分だけを切り取った画像で試してください。",true);return}
-    $("pasteBox").value=got.map(r=>LBL[r.key]+" "+rows[r.key].join(" ")).join("\n");
-    parsePaste();
-    const short=got.filter(r=>rows[r.key].length<6).map(r=>LBL[r.key]);
-    if(short.length)msg(`読み取りました。${short.join("・")}の数字が6つそろっていないので、入力欄を確認してください。`,true);
-    else msg("読み取って反映しました。数字が画像と合っているか確認してください。");
-  }catch(e){
-    msg("読み取りに失敗しました（読み取り用データを読み込めませんでした）。通信環境を確認してください。",true);
-    console.error(e);
-  }
-}
-function setupImage(){
-  const drop=$("drop"),file=$("imgFile");
-  file.addEventListener("change",()=>{if(file.files[0])readImage(file.files[0]);file.value=""});
-  drop.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();file.click()}});
-  drop.addEventListener("dragover",e=>{e.preventDefault();drop.classList.add("over")});
-  drop.addEventListener("dragleave",()=>drop.classList.remove("over"));
-  drop.addEventListener("drop",e=>{
-    e.preventDefault();drop.classList.remove("over");
-    const f=[...e.dataTransfer.files].find(f=>f.type.startsWith("image/"));if(f)readImage(f);
-  });
-  // ページのどこで Ctrl+V しても、画像なら読み取る（文字の貼り付けはそのまま）
-  document.addEventListener("paste",e=>{
-    const f=[...(e.clipboardData?.files||[])].find(f=>f.type.startsWith("image/"));
-    if(f){e.preventDefault();readImage(f)}
-  });
-}
-
 buildInputs();
-setupImage();
 $("clearBtn").addEventListener("click",()=>fill({}));
 $("resetOrderBtn").addEventListener("click",()=>{ord=[0,1,2,3,4,5];layout();calc()});
 $("pasteBtn").addEventListener("click",parsePaste);
