@@ -50,6 +50,17 @@ tbody th{background:var(--accent-soft);font-weight:700;white-space:nowrap;font-s
 .in input.name{font-family:var(--font-display);font-size:.85rem}
 .in input:focus{outline:2px solid var(--accent);outline-offset:1px}
 .in input.bad{border-color:var(--hot);outline-color:var(--hot)}
+/* 頭の数字（下2桁入力のときに前に付ける整数部） */
+.in th.prehead{font-size:.75rem;white-space:nowrap}
+.in td.pre{white-space:nowrap;background:var(--accent-soft)}
+.in td.pre input{min-width:0;width:3.2em;display:inline-block;border-style:dashed}
+.in td.pre span{font-family:var(--font-num);font-weight:600;margin-left:2px}
+.howto{margin-top:12px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.howto-head{display:flex;align-items:center;gap:6px 16px;flex-wrap:wrap}
+.howto h3{margin:0;font-size:.95rem}
+.howto .dir{font-size:.8rem;color:var(--muted);display:flex;gap:4px 12px;flex-wrap:wrap;align-items:center}
+.howto .dir label{color:var(--ink);cursor:pointer}
+.howto ol{margin:8px 0 0;padding-left:1.4em;font-size:.85rem;line-height:1.7}
 .tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
 button{font-family:var(--font-display);font-weight:700;font-size:.85rem;border:1px solid var(--accent);color:var(--accent);
   background:transparent;border-radius:6px;padding:6px 12px;cursor:pointer}
@@ -124,12 +135,26 @@ td.moved{background:var(--accent-soft)}
     <h2>展示情報を入力 <small>小数点は省略できます（685 → 6.85、3676 → 36.76）</small></h2>
     <div class="scroll">
       <table class="in" aria-label="展示情報の入力">
-        <thead><tr id="courseHead"><th>進入</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr>
+        <thead><tr id="courseHead"><th>進入</th><th class="prehead">頭の数字</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr>
           <tr class="order" id="orderRow"></tr></thead>
         <tbody id="inBody"></tbody>
       </table>
     </div>
     <p class="label">前付けなどで進入が変わったときは、艇番の丸を左右にドラッグして入れ替えてください（丸を選んで ← → キーでも動かせます）。入力した値は艇と一緒に移動します。</p>
+    <div class="howto">
+      <div class="howto-head"><h3>かんたん入力のしかた</h3>
+        <span class="dir" role="radiogroup" aria-label="入力の順番">入力の順番：
+          <label><input type="radio" name="dir" value="h" checked> 横（1〜6艇の展示 → 周回 …）</label>
+          <label><input type="radio" name="dir" value="v"> 縦（1艇目の4項目 → 2艇目 …）</label></span></div>
+      <ol>
+        <li><b>数字を打ち終わると、自動で次の欄に移ります。</b>欄をタップし直す必要はありません（Enter キーでも次へ進みます）。</li>
+        <li><b>各行の1艇目は全部打ちます。</b>「685」なら 6.85、「3676」なら 36.76 になり、その行の「頭の数字」（6 や 36）が自動で入ります。</li>
+        <li><b>2艇目からは下2桁だけ</b>で入力できます。頭の数字が 6 なら「79」→ 6.79 です。頭の数字は自分で入力・変更もできます。</li>
+        <li><b>頭の数字が違う艇</b>は「7.02」のように小数点を付けて打ってください。小数点以下を2桁打つと次へ進みます。</li>
+        <li>直線タイムがないときは「-」を打つか、空欄のままにします（展示タイムで計算します）。</li>
+        <li>スマホでは数字のキーボードが出ます。小数点は上の 4 のときだけ使います。</li>
+      </ol>
+    </div>
     <div class="tools">
       <button id="clearBtn">すべて消去</button>
       <button id="resetOrderBtn">枠なり（1〜6）に戻す</button>
@@ -223,21 +248,76 @@ let ord=[0,1,2,3,4,5];
 
 function buildInputs(){
   // 入力欄のidは艇番で固定し、表示順だけを ord に合わせて並べ替える
-  $("orderRow").innerHTML=`<th>艇番</th>`+[0,1,2,3,4,5].map(b=>`<td data-b="${b}"><button class="chip" data-b="${b}" aria-label="${b+1}号艇（ドラッグで進入を変更）"><span class="grip">⋮⋮</span><span class="lane l${b+1}">${b+1}</span></button></td>`).join("");
+  $("orderRow").innerHTML=`<th>艇番</th><td class="pre"></td>`+[0,1,2,3,4,5].map(b=>`<td data-b="${b}"><button class="chip" data-b="${b}" aria-label="${b+1}号艇（ドラッグで進入を変更）"><span class="grip">⋮⋮</span><span class="lane l${b+1}">${b+1}</span></button></td>`).join("");
   let h="";
   for(const r of ROWS){
-    h+=`<tr><th>${r.label}</th>${[0,1,2,3,4,5].map(b=>`<td data-b="${b}"><input id="${r.key}${b}" inputmode="decimal" aria-label="${b+1}号艇 ${r.label}"></td>`).join("")}</tr>`;
+    h+=`<tr><th>${r.label}</th><td class="pre"><input id="P${r.key}" class="pre" inputmode="numeric" maxlength="2" placeholder="−" aria-label="${r.label}の頭の数字"><span>.</span></td>${[0,1,2,3,4,5].map(b=>`<td data-b="${b}"><input id="${r.key}${b}" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="${b+1}号艇 ${r.label}"></td>`).join("")}</tr>`;
   }
   $("inBody").innerHTML=h;
   setupDrag();
-  $("inBody").addEventListener("input",calc);
-  // 欄を離れたら 685 → 6.85 の形に表示し直す
+  $("inBody").addEventListener("input",onInput);
+  // 次の欄に移ったときは中身を選択して、そのまま打ち直せるようにする
+  $("inBody").addEventListener("focusin",e=>{if(e.target.tagName==="INPUT")e.target.select()});
+  $("inBody").addEventListener("keydown",e=>{
+    if(e.key==="Enter"&&e.target.tagName==="INPUT"&&!e.target.classList.contains("pre")){e.preventDefault();focusNext(e.target)}
+  });
+  // 欄を離れたら 685 → 6.85、79 → 6.79 の形に表示し直す
   $("inBody").addEventListener("focusout",e=>{
-    const raw=norm(e.target.value);
-    if(/^\d+$/.test(raw)) e.target.value=toTime(raw).toFixed(2);
+    const el=e.target;
+    if(!el.classList.contains("pre")){
+      const raw=norm(el.value),v=valueOf(el.id[0],raw);
+      if(/^\d+$/.test(raw)&&isFinite(v)) el.value=v.toFixed(2);
+    }
     setTimeout(calc,0);
   });
   $("kBody").innerHTML=COLS.map(c=>`<tr><th>${c.label}</th><td>${c.time}</td>${K[c.id].map(v=>`<td>${v.toFixed(1)}</td>`).join("")}</tr>`).join("");
+}
+// ---- かんたん入力：頭の数字＋下2桁、打ち終わったら次の欄へ ----
+// 頭の数字を自分で入れた行は、自動で上書きしない
+const preManual={};
+const prefix=key=>$("P"+key).value.replace(/\D/g,"");
+const inRange=(key,v)=>isFinite(v)&&v>=RANGE[key][0]&&v<=RANGE[key][1];
+// 欄の文字を秒に直す。頭の数字がある行は、2桁の数字を下2桁として読む（頭6・「79」→ 6.79）
+function valueOf(key,raw){
+  const p=prefix(key);
+  if(p&&/^\d{1,2}$/.test(raw))return raw.length===2?Number(p+"."+raw):NaN;
+  return toTime(raw);
+}
+// 打ち終わったかどうか
+function isDone(key,raw){
+  if(/^[-－—ー−]$/.test(raw))return true;                 // 直線なしの「-」
+  if(/^\d+\.\d{2}$/.test(raw))return true;                // 小数点付きで2桁まで打った
+  if(prefix(key))return /^\d{2}$/.test(raw);               // 下2桁
+  // 頭の数字がないとき：今の桁数で範囲内、かつもう1桁打つと範囲外になる（685 → 6.85、3676 → 36.76）
+  return /^\d{3,4}$/.test(raw)&&inRange(key,Number(raw)/100)&&(raw.length===4||!inRange(key,Number(raw)/10));
+}
+function inputOrder(){
+  const dir=document.querySelector('input[name="dir"]:checked').value,list=[];
+  if(dir==="h")for(const r of ROWS)for(const b of ord)list.push(r.key+b);
+  else for(const b of ord)for(const r of ROWS)list.push(r.key+b);
+  return list;
+}
+function focusNext(el){
+  const list=inputOrder(),i=list.indexOf(el.id);
+  if(i>=0&&i<list.length-1)$(list[i+1]).focus();else el.blur();
+}
+function onInput(e){
+  const el=e.target;
+  if(el.classList.contains("pre")){
+    el.value=el.value.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/\D/g,"");
+    preManual[el.id]=el.value!=="";
+    calc();return;
+  }
+  const key=el.id[0],raw=norm(el.value);
+  if(!isDone(key,raw)){calc();return}
+  const v=valueOf(key,raw);
+  if(isFinite(v)){
+    el.value=v.toFixed(2);
+    // 行の1艇目を全部打ったら、その整数部を頭の数字にする
+    if(!prefix(key)&&!preManual["P"+key]&&!/^\d{2}$/.test(raw))$("P"+key).value=String(Math.floor(v));
+  }
+  calc();
+  focusNext(el);
 }
 // 表の列を ord の順に並べ直す（input要素ごと動かすので値はそのまま）
 function layout(){
@@ -265,7 +345,7 @@ function setupDrag(){
   let drag=null;
   // ポインタの位置から、どの進入コースの列の上にいるかを求める
   const courseAt=x=>{
-    const ths=[...$("courseHead").children].slice(1);
+    const ths=[...$("courseHead").children].slice(2);
     let best=0,bd=Infinity;
     ths.forEach((th,c)=>{const r=th.getBoundingClientRect(),d=Math.abs(x-(r.left+r.right)/2);if(d<bd){bd=d;best=c}});
     return best;
@@ -301,8 +381,8 @@ function read(){
     for(const k of ROWS){
       // 「-」だけの欄は空欄として扱う
       const el=$(k.key+i),raw=norm(el.value).replace(/^[-－—ー−]+$/,"");
-      const v=toTime(raw);
-      const ok=raw!==""&&isFinite(v)&&v>=RANGE[k.key][0]&&v<=RANGE[k.key][1];
+      const v=valueOf(k.key,raw);
+      const ok=raw!==""&&inRange(k.key,v);
       // 小数点なしで入力途中の欄は、入力が終わるまで赤枠にしない
       const typing=!ok&&/^\d+$/.test(raw)&&el===document.activeElement;
       el.classList.toggle("bad",raw!==""&&!ok&&!typing);
@@ -378,7 +458,11 @@ function parsePaste(){
   msg.textContent="反映しました。";msg.className="msg";
 }
 buildInputs();
-$("clearBtn").addEventListener("click",()=>fill({}));
+$("clearBtn").addEventListener("click",()=>{
+  for(const r of ROWS){$("P"+r.key).value="";preManual["P"+r.key]=false}
+  fill({});
+  $(inputOrder()[0]).focus();
+});
 $("resetOrderBtn").addEventListener("click",()=>{ord=[0,1,2,3,4,5];layout();calc()});
 $("pasteBtn").addEventListener("click",parsePaste);
 $("pasteClearBtn").addEventListener("click",()=>{$("pasteBox").value="";$("pasteMsg").textContent="";$("pasteBox").focus()});
