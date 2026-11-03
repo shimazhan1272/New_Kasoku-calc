@@ -448,14 +448,14 @@ function parsePaste(){
     const cells=line.trim().split(/[\s,]+/),key=LABEL[cells[0]];
     if(key) byRow[key]=cells.slice(1,7).map(t=>/^\d+(\.\d+)?$/.test(t)?(t.includes(".")||t.length<3?Number(t):Number(t)/100):null);
   }
-  if(byRow.E||byRow.T){fill(byRow);msg.textContent="反映しました。";msg.className="msg";return}
+  if(byRow.E||byRow.T){fill(byRow);$("pasteBox").value="";msg.textContent="反映しました。";msg.className="msg";return}
   let nums=(txt.match(/\d+(?:\.\d+)?/g)||[]).map(t=>t.includes(".")||t.length<3?Number(t):Number(t)/100);
   if(nums.length>=30&&nums.slice(0,6).join()==="1,2,3,4,5,6") nums=nums.slice(6);
   if(nums.length<24){msg.textContent=`数字が${nums.length}個しか見つかりません。24個（4項目×6艇）必要です。`;msg.className="msg err";return}
   const s={};
   ROWS.forEach((r,k)=>s[r.key]=nums.slice(k*6,k*6+6));
   fill(s);
-  msg.textContent="反映しました。";msg.className="msg";
+  $("pasteBox").value="";msg.textContent="反映しました。";msg.className="msg";
 }
 buildInputs();
 $("clearBtn").addEventListener("click",()=>{
