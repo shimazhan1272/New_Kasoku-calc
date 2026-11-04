@@ -147,12 +147,12 @@ td.moved{background:var(--accent-soft)}
           <label><input type="radio" name="dir" value="h" checked> 横（1〜6艇の展示 → 周回 …）</label>
           <label><input type="radio" name="dir" value="v"> 縦（1艇目の4項目 → 2艇目 …）</label></span></div>
       <ol>
-        <li><b>数字を打ち終わると、自動で次の欄に移ります。</b>欄をタップし直す必要はありません（Enter キーでも次へ進みます）。</li>
-        <li><b>各行の1艇目は全部打ちます。</b>「685」なら 6.85、「3676」なら 36.76 になり、その行の「頭の数字」（6 や 36）が自動で入ります。</li>
-        <li><b>2艇目からは下2桁だけ</b>で入力できます。頭の数字が 6 なら「79」→ 6.79 です。頭の数字は自分で入力・変更もできます。</li>
-        <li><b>頭の数字が違う艇</b>は「7.02」のように小数点を付けて打ってください。小数点以下を2桁打つと次へ進みます。</li>
-        <li>直線タイムがないときは「-」を打つか、空欄のままにします（展示タイムで計算します）。</li>
-        <li>スマホでは数字のキーボードが出ます。小数点は上の 4 のときだけ使います。</li>
+        <li><b>先に各行の「頭の数字」を入れます。</b>展示なら「6」、周回なら「36」のように、小数点より前の数字です。Enter で次の行の頭の数字へ、最後の行のあとは最初の入力欄へ移ります。</li>
+        <li><b>あとは小数点以下の2桁だけ</b>を打って Enter を押します。頭の数字が 6 なら「79」＋ Enter → 6.79 になり、次の欄へ移ります。</li>
+        <li><b>全部打っても入力できます。</b>「666」なら 6.66、「3676」なら 36.76 になり、打ち終わると自動で次の欄へ移ります。頭の数字は変わりません。頭の数字と整数部が違う艇（頭 6 の行の 7.02 など）はこの打ち方で入れてください。</li>
+        <li>頭の数字が空の行は、全部打つ入力だけになります（685 → 6.85）。</li>
+        <li>直線タイムがないときは「-」を打つか、空欄のまま Enter で飛ばします（展示タイムで計算します）。</li>
+        <li>スマホでは数字のキーボードが出ます。Enter の代わりにキーボード上の「次へ」（↓）や、次の欄のタップで進めます。</li>
       </ol>
     </div>
     <div class="tools">
@@ -259,22 +259,22 @@ function buildInputs(){
   // 次の欄に移ったときは中身を選択して、そのまま打ち直せるようにする
   $("inBody").addEventListener("focusin",e=>{if(e.target.tagName==="INPUT")e.target.select()});
   $("inBody").addEventListener("keydown",e=>{
-    if(e.key==="Enter"&&e.target.tagName==="INPUT"&&!e.target.classList.contains("pre")){e.preventDefault();focusNext(e.target)}
+    if(e.key!=="Enter"||e.target.tagName!=="INPUT")return;
+    e.preventDefault();
+    // 頭の数字の欄では、次の行の頭の数字へ。最後の行のあとは最初の入力欄へ
+    if(e.target.classList.contains("pre")){
+      const i=ROWS.findIndex(r=>"P"+r.key===e.target.id);
+      $(i<ROWS.length-1?"P"+ROWS[i+1].key:inputOrder()[0]).focus();
+    }else{finalize(e.target);calc();focusNext(e.target)}
   });
   // 欄を離れたら 685 → 6.85、79 → 6.79 の形に表示し直す
   $("inBody").addEventListener("focusout",e=>{
-    const el=e.target;
-    if(!el.classList.contains("pre")){
-      const raw=norm(el.value),v=valueOf(el.id[0],raw);
-      if(/^\d+$/.test(raw)&&isFinite(v)) el.value=v.toFixed(2);
-    }
+    if(!e.target.classList.contains("pre"))finalize(e.target);
     setTimeout(calc,0);
   });
   $("kBody").innerHTML=COLS.map(c=>`<tr><th>${c.label}</th><td>${c.time}</td>${K[c.id].map(v=>`<td>${v.toFixed(1)}</td>`).join("")}</tr>`).join("");
 }
-// ---- かんたん入力：頭の数字＋下2桁、打ち終わったら次の欄へ ----
-// 頭の数字を自分で入れた行は、自動で上書きしない
-const preManual={};
+// ---- かんたん入力：頭の数字（先に自分で入れる）＋下2桁、打ち終わったら次の欄へ ----
 const prefix=key=>$("P"+key).value.replace(/\D/g,"");
 const inRange=(key,v)=>isFinite(v)&&v>=RANGE[key][0]&&v<=RANGE[key][1];
 // 欄の文字を秒に直す。頭の数字がある行は、2桁の数字を下2桁として読む（頭6・「79」→ 6.79）
@@ -283,12 +283,16 @@ function valueOf(key,raw){
   if(p&&/^\d{1,2}$/.test(raw))return raw.length===2?Number(p+"."+raw):NaN;
   return toTime(raw);
 }
-// 打ち終わったかどうか
+// 確定した欄を 6.66 の形に表示し直す
+function finalize(el){
+  const raw=norm(el.value),v=valueOf(el.id[0],raw);
+  if(/^\d+$/.test(raw)&&isFinite(v))el.value=v.toFixed(2);
+}
+// 打ち終わったかどうか。下2桁だけのときは「666」の打ちかけと区別できないので、Enter で確定する
 function isDone(key,raw){
   if(/^[-－—ー−]$/.test(raw))return true;                 // 直線なしの「-」
   if(/^\d+\.\d{2}$/.test(raw))return true;                // 小数点付きで2桁まで打った
-  if(prefix(key))return /^\d{2}$/.test(raw);               // 下2桁
-  // 頭の数字がないとき：今の桁数で範囲内、かつもう1桁打つと範囲外になる（685 → 6.85、3676 → 36.76）
+  // 全部打ったとき：今の桁数で範囲内、かつもう1桁打つと範囲外になる（685 → 6.85、3676 → 36.76）
   return /^\d{3,4}$/.test(raw)&&inRange(key,Number(raw)/100)&&(raw.length===4||!inRange(key,Number(raw)/10));
 }
 function inputOrder(){
@@ -305,17 +309,12 @@ function onInput(e){
   const el=e.target;
   if(el.classList.contains("pre")){
     el.value=el.value.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/\D/g,"");
-    preManual[el.id]=el.value!=="";
     calc();return;
   }
   const key=el.id[0],raw=norm(el.value);
   if(!isDone(key,raw)){calc();return}
   const v=valueOf(key,raw);
-  if(isFinite(v)){
-    el.value=v.toFixed(2);
-    // 行の1艇目を全部打ったら、その整数部を頭の数字にする
-    if(!prefix(key)&&!preManual["P"+key]&&!/^\d{2}$/.test(raw))$("P"+key).value=String(Math.floor(v));
-  }
+  if(isFinite(v))el.value=v.toFixed(2);
   calc();
   focusNext(el);
 }
@@ -459,9 +458,9 @@ function parsePaste(){
 }
 buildInputs();
 $("clearBtn").addEventListener("click",()=>{
-  for(const r of ROWS){$("P"+r.key).value="";preManual["P"+r.key]=false}
+  for(const r of ROWS)$("P"+r.key).value="";
   fill({});
-  $(inputOrder()[0]).focus();
+  $("P"+ROWS[0].key).focus();
 });
 $("resetOrderBtn").addEventListener("click",()=>{ord=[0,1,2,3,4,5];layout();calc()});
 $("pasteBtn").addEventListener("click",parsePaste);
