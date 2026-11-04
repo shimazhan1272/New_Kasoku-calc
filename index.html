@@ -119,6 +119,19 @@ td.moved{background:var(--accent-soft)}
 .pval{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:var(--font-num);font-weight:600;font-size:1.05rem}
 .ptick{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed var(--muted);opacity:.6}
 .pnote{font-size:.75rem;color:var(--muted)}
+/* 折りたたみのパネル（見出しをクリックで開く） */
+.fold>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+.fold>summary::-webkit-details-marker{display:none}
+.fold>summary::before{content:"▶";font-size:.7rem;color:var(--muted);transition:transform .2s}
+.fold[open]>summary::before{transform:rotate(90deg)}
+.fold>summary h2{margin:0;color:var(--ink)}
+.fold[open]>summary{margin-bottom:12px}
+.fold>summary:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:4px}
+.picks-grid{margin-bottom:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.pick{border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.pick-label{font-size:.8rem;font-weight:700;color:var(--muted)}
+.pick-text{font-family:var(--font-num);font-size:1.35rem;font-weight:600;letter-spacing:.04em;line-height:1.4;overflow-wrap:anywhere}
+.pick-note{font-size:.72rem;color:var(--muted)}
 .notes{font-size:.85rem;color:var(--muted)}
 .notes table{font-size:.8rem;margin:8px 0}
 .notes code{font-family:var(--font-num)}
@@ -208,8 +221,8 @@ td.moved{background:var(--accent-soft)}
     </dl>
   </section>
 
-  <section class="panel notes">
-    <h2>計算方法</h2>
+  <details class="panel notes fold">
+    <summary><h2>計算方法</h2></summary>
     <p>1. 区間速度 ＝ 進入ごとの定数 ÷ タイム（内側のコースほど走る距離が短いため、定数が小さくなります）</p>
     <div class="scroll"><table>
       <thead><tr><th>区間</th><th>使うタイム</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr></thead>
@@ -219,7 +232,13 @@ td.moved{background:var(--accent-soft)}
     3. エンジンパワー ＝ 70 ＋ 0.92×出足差 ＋ 4.08×中1差 ＋ 3.55×中2差 − 1.40×中3差 ＋ 4.65×伸び差<br>
     4. 評価 ＝ エンジンパワーの高い順</p>
     <p>定数と重みは推定値です。</p>
-  </section>
+  </details>
+
+  <details class="panel fold" hidden>
+    <summary><h2>推奨買い目 <small>3連単・エンジンパワーの順位から作成</small></h2></summary>
+    <div id="picks"></div>
+    <p class="pnote">「全」は残りすべて、「=」は1・2着の順不同です。的中を保証するものではありません。</p>
+  </details>
 </div>
 
 <script>
@@ -437,6 +456,33 @@ function calc(){
       <div class="ptrack"><div class="ptick" style="left:${pct(70)}%"></div>
         <div class="pfill${pr[i]===1?" top":""}" style="width:${p==null?0:pct(p)}%"></div>
         <span class="pval">${p==null?"—":Math.round(p)}</span></div></div>`).join("");
+  renderPicks(ready?P:null);
+}
+// ---- 推奨買い目（3連単）：エンジンパワーの順位から作る ----
+// 例）パワー順が 6,2,3,4,5,1 で1コースが1号艇なら
+//   本線 6-234-全 ／ 狙い目 23-623-全 ／ 押さえ 1=6-23 ／ BOX 623BOX・624BOX
+const ALL=[1,2,3,4,5,6];
+// 1着・2着・3着の候補から、3艇が重ならない組み合わせの数（点数）
+function countPts(a,b,c){
+  let n=0;
+  for(const x of a)for(const y of b)for(const z of c)if(x!==y&&y!==z&&x!==z)n++;
+  return n;
+}
+function renderPicks(P){
+  const el=$("picks");
+  if(!P){el.innerHTML=`<p class="pnote">6艇すべて入力すると表示します。</p>`;return}
+  // パワーの高い順に並べた艇番（同点は小数まで比べる）
+  const r=P.map((p,i)=>({p,b:ord[i]+1})).sort((x,y)=>y.p-x.p).map(x=>x.b);
+  const c1=ord[0]+1,o=r.filter(b=>b!==c1);   // 押さえは1コースの艇と、それ以外のパワー上位
+  const J=a=>a.join("");
+  const rows=[
+    {label:"本線",text:`${r[0]}-${J(r.slice(1,4))}-全`,pts:countPts([r[0]],r.slice(1,4),ALL),note:"パワー1位が1着、2〜4位が2着"},
+    {label:"狙い目",text:`${J(r.slice(1,3))}-${J(r.slice(0,3))}-全`,pts:countPts(r.slice(1,3),r.slice(0,3),ALL),note:"パワー2・3位が1着、1〜3位が2着"},
+    {label:"押さえ",text:`${c1}=${o[0]}-${J(o.slice(1,3))}`,pts:countPts([c1,o[0]],[c1,o[0]],o.slice(1,3)),note:"1コースの艇とパワー1位が1・2着（順不同）"},
+    {label:"BOX",text:`${J(r.slice(0,3))}BOX　${J([r[0],r[1],r[3]])}BOX`,pts:12,note:"パワー1〜3位、1・2・4位のボックス"}
+  ];
+  el.innerHTML=`<div class="picks-grid">${rows.map(x=>`<div class="pick"><div class="pick-label">${x.label}</div>
+      <div class="pick-text">${x.text}</div><div class="pick-note">${x.note}・${x.pts}点</div></div>`).join("")}</div>`;
 }
 function parsePaste(){
   const txt=$("pasteBox").value.replace(/[０-９．]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
